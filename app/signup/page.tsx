@@ -101,7 +101,7 @@ export default function SignupPage() {
 
     setLoading(true)
     
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`;
+    const apiUrl = `/api/auth/register`;
 
     const body: { [key: string]: any } = {
         email: formData.email,
