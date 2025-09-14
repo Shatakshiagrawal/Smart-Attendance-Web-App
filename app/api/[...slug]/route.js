@@ -1,27 +1,30 @@
 import { NextResponse } from 'next/server';
 import app from '@/lib/server/server.js'; // Import our Express app
 
-// This function creates a request listener that we can use to handle requests
+// Initialize the server once and reuse it across requests
 const listener = app.listen(0, 'localhost');
 
+// Create a promise that resolves when the server is ready
+const ready = new Promise((resolve) => listener.on('listening', resolve));
+
 // This is the main handler for all API requests
-const handler = (req) => {
-  return new Promise(async (resolve) => {
-    const url = new URL(req.url);
-    
-    // Rewrite the URL to point to our in-memory Express server
-    const proxyUrl = `http://localhost:${listener.address().port}${url.pathname}${url.search}`;
+const handler = async (req) => {
+  // Wait for the server to be ready
+  await ready;
+  const port = listener.address().port;
 
-    // Forward the request
-    const res = await fetch(proxyUrl, {
-      method: req.method,
-      headers: req.headers,
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
-      redirect: 'manual',
-      duplex: 'half' // Required for streaming request bodies
-    });
+  const url = new URL(req.url);
+  
+  // Rewrite the URL to point to our in-memory Express server
+  const proxyUrl = `http://localhost:${port}${url.pathname}${url.search}`;
 
-    resolve(res);
+  // Forward the request and return the response
+  return fetch(proxyUrl, {
+    method: req.method,
+    headers: req.headers,
+    body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
+    redirect: 'manual',
+    duplex: 'half' // Required for streaming request bodies
   });
 };
 
