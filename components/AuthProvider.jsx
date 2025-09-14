@@ -2,7 +2,7 @@
 
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import toast from 'react-hot-toast'; // <-- THIS IS THE FIX
+import toast from 'react-hot-toast';
 
 const AuthContext = createContext(null);
 
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
     return (
         <AuthContext.Provider value={value}>
             {children}
-        </Auth-Context.Provider>
+        </AuthContext.Provider>
     );
 };
 
