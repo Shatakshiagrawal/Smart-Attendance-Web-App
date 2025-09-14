@@ -15,8 +15,11 @@ const handler = async (req) => {
 
   const url = new URL(req.url);
   
+  // CRITICAL FIX: Remove the '/api' prefix from the path before forwarding
+  const pathname = url.pathname.replace(/^\/api/, '');
+
   // Rewrite the URL to point to our in-memory Express server
-  const proxyUrl = `http://localhost:${port}${url.pathname}${url.search}`;
+  const proxyUrl = `http://localhost:${port}${pathname}${url.search}`;
 
   // Forward the request and return the response
   return fetch(proxyUrl, {
