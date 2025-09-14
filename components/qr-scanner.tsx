@@ -30,7 +30,7 @@ export default function QRScannerPage() {
     setScanStatus("verifying");
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch("http://localhost:5001/api/attendance/mark", {
+      const response = await fetch("/api/attendance/mark", {
         method: "POST",
         headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}`},
         body: JSON.stringify({ attendanceId: id, assembledSequence }),
