@@ -46,10 +46,12 @@ export default function QRScannerPage() {
         setTimeout(() => router.push("/student/dashboard"), 2000);
       } else {
         // DEFINITIVE FIX: Use the global error handler for auth issues, and display other errors clearly.
-        if (response.status === 401 || response.status === 403) {
-          handleApiError(response);
+        if (response.status === 401 && data.message.includes('Invalid QR sequence')) {
+            throw new Error(data.message);
+        } else if (response.status === 401 || response.status === 403) {
+            handleApiError(response); // Handle other auth errors (like expired token)
         } else {
-          throw new Error(data.message || "An unknown error occurred while marking attendance.");
+            throw new Error(data.message || "An unknown error occurred while marking attendance.");
         }
       }
     } catch (err) {
