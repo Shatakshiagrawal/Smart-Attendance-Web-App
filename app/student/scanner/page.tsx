@@ -28,37 +28,44 @@ export default function QRScannerPage() {
     setCollectedChunks(new Map());
   }, []);
   
-  const verifyAttendance = async (id: string, assembledSequence: string[]) => {
-    setScanStatus("verifying");
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/attendance/mark`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}`},
-        body: JSON.stringify({ attendanceId: id, assembledSequence }),
-      });
-      
-      const data = await response.json();
+  // In app/student/scanner/page.tsx
 
-      if (response.ok) {
-        setScanStatus("success");
-        toast.success(data.message || "Attendance marked successfully!");
-        setTimeout(() => router.push("/student/dashboard"), 2000);
-      } else {
-        // DEFINITIVE FIX: Use the global error handler for auth issues, and display other errors clearly.
-        if (response.status === 401 && data.message.includes('Invalid QR sequence')) {
-            throw new Error(data.message);
-        } else if (response.status === 401 || response.status === 403) {
-            handleApiError(response); // Handle other auth errors (like expired token)
-        } else {
-            throw new Error(data.message || "An unknown error occurred while marking attendance.");
-        }
-      }
-    } catch (err) {
-      setError((err as Error).message);
+const verifyAttendance = async (id: string, assembledSequence: string[]) => {
+  setScanStatus("verifying");
+  try {
+    const token = localStorage.getItem('token');
+    const response = await fetch(`/api/attendance/mark`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}`},
+      body: JSON.stringify({ attendanceId: id, assembledSequence }),
+    });
+    
+    const data = await response.json();
+
+    if (!response.ok) {
+      // If the server provides a specific error message, we'll throw it.
+      throw new Error(data.message || `An unknown error occurred (Status: ${response.status})`);
+    }
+
+    // If the response is successful
+    setScanStatus("success");
+    toast.success(data.message || "Attendance marked successfully!");
+    setTimeout(() => router.push("/student/dashboard"), 2000);
+
+  } catch (err) {
+    // This single catch block now handles all errors gracefully.
+    const errorMessage = (err as Error).message;
+    
+    // Check if the error indicates a token/session issue that requires logout.
+    if (errorMessage.includes('token failed') || errorMessage.includes('user not found')) {
+      handleApiError({ status: 401 }); // Trigger the global logout handler
+    } else {
+      // For all other errors (like "Invalid QR sequence"), just display the message.
+      setError(errorMessage);
       setScanStatus("error");
     }
-  };
+  }
+};
 
   useEffect(() => {
     resetState();
