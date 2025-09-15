@@ -59,6 +59,15 @@ export default function StudentLayout({
   if (!user || user.role !== "student") {
     return null
   }
+  
+  // FIX: Safely get user initials
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[1][0]}`;
+    }
+    return names[0].substring(0, 2);
+  };
 
   return (
     <SidebarProvider>
@@ -129,8 +138,7 @@ export default function StudentLayout({
                     <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-[#00ABE4] text-white">
-                          {user.firstName?.[0]}
-                          {user.lastName?.[0]}
+                          {getInitials(user.name)}
                         </AvatarFallback>
                       </Avatar>
                     </Button>

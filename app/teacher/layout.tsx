@@ -60,6 +60,15 @@ export default function TeacherLayout({
     return null
   }
 
+  // FIX: Safely get user initials
+  const getInitials = (name: string) => {
+    const names = name.split(' ');
+    if (names.length > 1) {
+      return `${names[0][0]}${names[1][0]}`;
+    }
+    return names[0].substring(0, 2);
+  };
+
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
@@ -125,7 +134,7 @@ export default function TeacherLayout({
                     <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-[#00ABE4] text-white">
-                          {user.name.split(' ')[0][0]}{user.name.split(' ')[1][0]}
+                          {getInitials(user.name)}
                         </AvatarFallback>
                       </Avatar>
                     </Button>
