@@ -1,6 +1,5 @@
 "use client"
 
-// FIX: Added 'useCallback' to the import list from React
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -67,7 +66,7 @@ export default function TeacherDashboard() {
   const sequenceRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const statusPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchTimetable = async () => {
+  const fetchTimetable = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -85,7 +84,7 @@ export default function TeacherDashboard() {
       }
       
       const data = await response.json();
-      setTimetable(data.timetable);
+      setTimetable(data.timetable || []);
 
     } catch (error) {
       console.error("Error fetching timetable:", error);
@@ -93,7 +92,7 @@ export default function TeacherDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [handleApiError]);
 
   useEffect(() => {
     if (user) {
@@ -104,7 +103,7 @@ export default function TeacherDashboard() {
       if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
       if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
     };
-  }, [user]);
+  }, [user, fetchTimetable]);
 
   const fetchSessionStatus = useCallback(async () => {
     if (!activeQR) return;
@@ -132,10 +131,10 @@ export default function TeacherDashboard() {
   }, [activeQR, handleApiError]);
 
   useEffect(() => {
-    if (activeQR) {
+    if (activeQR && activeQR.animationSequence?.length > 0) { // **CRITICAL FIX HERE**
         animationIntervalRef.current = setInterval(() => {
-            setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
-        }, 500);
+            setCurrentFrameIndex(prev => (prev + 1) % activeQR.animationSequence.length);
+        }, 500); // Slower animation speed
 
         sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
         
