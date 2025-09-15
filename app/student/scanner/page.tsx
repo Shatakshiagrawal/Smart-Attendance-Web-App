@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,9 @@ export default function QRScannerPage() {
   const [totalChunks, setTotalChunks] = useState(0);
   const [collectedChunks, setCollectedChunks] = useState<Map<number, string>>(new Map());
 
+  // Use a ref to hold the scanner instance to prevent stale closures
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+
   const resetState = useCallback(() => {
     setScanStatus("idle");
     setError("");
@@ -28,49 +31,39 @@ export default function QRScannerPage() {
     setCollectedChunks(new Map());
   }, []);
   
-  // In app/student/scanner/page.tsx
+  const verifyAttendance = async (id: string, assembledSequence: string[]) => {
+    setScanStatus("verifying");
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/attendance/mark`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}`},
+        body: JSON.stringify({ attendanceId: id, assembledSequence }),
+      });
+      
+      const data = await response.json();
 
-const verifyAttendance = async (id: string, assembledSequence: string[]) => {
-  setScanStatus("verifying");
-  try {
-    const token = localStorage.getItem('token');
-    const response = await fetch(`/api/attendance/mark`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", 'Authorization': `Bearer ${token}`},
-      body: JSON.stringify({ attendanceId: id, assembledSequence }),
-    });
-    
-    const data = await response.json();
-
-    if (!response.ok) {
-      // If the server provides a specific error message, we'll throw it.
-      throw new Error(data.message || `An unknown error occurred (Status: ${response.status})`);
-    }
-
-    // If the response is successful
-    setScanStatus("success");
-    toast.success(data.message || "Attendance marked successfully!");
-    setTimeout(() => router.push("/student/dashboard"), 2000);
-
-  } catch (err) {
-    // This single catch block now handles all errors gracefully.
-    const errorMessage = (err as Error).message;
-    
-    // Check if the error indicates a token/session issue that requires logout.
-    if (errorMessage.includes('token failed') || errorMessage.includes('user not found')) {
-      handleApiError({ status: 401 }); // Trigger the global logout handler
-    } else {
-      // For all other errors (like "Invalid QR sequence"), just display the message.
-      setError(errorMessage);
+      if (response.ok) {
+        setScanStatus("success");
+        toast.success(data.message || "Attendance marked successfully!");
+        setTimeout(() => router.push("/student/dashboard"), 2000);
+      } else {
+        if (response.status === 401 || response.status === 403) {
+          handleApiError(response);
+        } else {
+          throw new Error(data.message || "An unknown error occurred while marking attendance.");
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message);
       setScanStatus("error");
     }
-  }
-};
+  };
 
   useEffect(() => {
     resetState();
-    setScanStatus("capturing");
-    const scanner = new Html5Qrcode("reader");
+    scannerRef.current = new Html5Qrcode("reader");
+    const scanner = scannerRef.current;
 
     const onScanSuccess = (decodedText: string) => {
       try {
@@ -79,26 +72,36 @@ const verifyAttendance = async (id: string, assembledSequence: string[]) => {
         const totalChunksNeeded = parseInt(total, 10);
 
         if (id && data && !isNaN(chunkIndex) && !isNaN(totalChunksNeeded)) {
-            setCollectedChunks(currentChunks => {
-                if (currentChunks.has(chunkIndex)) return currentChunks;
-                const newChunks = new Map(currentChunks).set(chunkIndex, data);
-                
-                if (newChunks.size === totalChunksNeeded) {
-                    if (scanner && scanner.isScanning) {
-                        scanner.clear().catch(err => console.error("Failed to clear scanner", err));
-                    }
+          setCollectedChunks(currentChunks => {
+            if (currentChunks.has(chunkIndex)) return currentChunks;
+            
+            const newChunks = new Map(currentChunks).set(chunkIndex, data);
+            
+            if (newChunks.size === totalChunksNeeded) {
+              // CRITICAL FIX: Properly stop and clear the scanner
+              if (scanner && scanner.isScanning) {
+                scanner.stop()
+                  .then(() => {
+                    scanner.clear();
                     const assembled = Array.from(newChunks.keys()).sort((a, b) => a - b).map(key => newChunks.get(key)!);
                     verifyAttendance(id, assembled);
-                }
-                return newChunks;
-            });
-            if (totalChunks === 0) setTotalChunks(totalChunksNeeded);
+                  })
+                  .catch(err => {
+                    console.error("Failed to stop scanner", err);
+                  });
+              }
+            }
+            return newChunks;
+          });
+
+          if (totalChunks === 0) setTotalChunks(totalChunksNeeded);
         }
       } catch(e) { /* ignore */ }
     };
 
     const onScanFailure = (error: any) => {};
 
+    setScanStatus("capturing");
     Html5Qrcode.getCameras().then(devices => {
       if (devices && devices.length) {
           scanner.start(
@@ -117,11 +120,15 @@ const verifyAttendance = async (id: string, assembledSequence: string[]) => {
     });
 
     return () => {
-      if (scanner && scanner.isScanning) {
-        scanner.clear().catch(err => console.error("Failed to clear scanner on unmount", err));
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        scannerRef.current.stop().then(() => {
+          scannerRef.current?.clear();
+        }).catch(err => {
+            console.error("Failed to clear scanner on unmount", err)
+        });
       }
     };
-  }, []);
+  }, [resetState, handleApiError, router]);
 
   const renderContent = () => {
     const progress = totalChunks > 0 ? (collectedChunks.size / totalChunks) * 100 : 0;
