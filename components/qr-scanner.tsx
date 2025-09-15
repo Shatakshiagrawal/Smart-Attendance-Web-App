@@ -90,7 +90,7 @@ export default function QRScannerPage() {
               { facingMode: "environment" }, 
               {
                   fps: 10,
-                  qrbox: { width: 250, height: 250 } 
+                  qrbox: { width: 250, height: 350 } 
               },
               onScanSuccess,
               onScanFailure
