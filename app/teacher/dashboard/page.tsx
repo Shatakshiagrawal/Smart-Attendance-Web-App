@@ -21,6 +21,22 @@ interface Student {
   enrollmentNo: string;
 }
 
+interface Semester {
+    _id: string;
+    subjectName: string;
+    subjectCode: string;
+    semesterNumber: number;
+    students: Student[];
+}
+
+interface TimetableEntry {
+    _id: string;
+    semester: Semester;
+    day: string;
+    startTime: string;
+    endTime: string;
+}
+
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
@@ -28,8 +44,8 @@ const fadeInUp = {
 }
 
 export default function TeacherDashboard() {
-  const { user } = useAuth();
-  const [timetable, setTimetable] = useState<any[]>([]);
+  const { user, handleApiError } = useAuth();
+  const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeQR, setActiveQR] = useState<{
     attendanceId: string;
@@ -50,6 +66,34 @@ export default function TeacherDashboard() {
   const sequenceRefreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const statusPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const fetchTimetable = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/timetable`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleApiError(response);
+        }
+        throw new Error("Failed to load timetable");
+      }
+      
+      const data = await response.json();
+      setTimetable(data.timetable);
+
+    } catch (error) {
+      console.error("Error fetching timetable:", error);
+      toast.error("Failed to load timetable.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchTimetable();
@@ -61,10 +105,36 @@ export default function TeacherDashboard() {
     };
   }, [user]);
 
+  const fetchSessionStatus = useCallback(async () => {
+    if (!activeQR) return;
+    try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/attendance/session/${activeQR.attendanceId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+            if (res.status === 401 || res.status === 403) handleApiError(res);
+            return; 
+        }
+
+        const data = await res.json();
+        setPresentCount(data.presentCount);
+        setAllStudents(data.allStudents);
+        setPresentStudentIds(new Set(data.presentStudentIds));
+        
+        // Update total students in case it changed
+        setActiveQR(prev => prev ? { ...prev, totalStudents: data.allStudents.length } : null);
+
+    } catch (error) {
+        console.error("Failed to fetch session status", error);
+    }
+  }, [activeQR, handleApiError]);
+
   useEffect(() => {
     if (activeQR) {
         animationIntervalRef.current = setInterval(() => {
-            setCurrentFrameIndex(prev => (prev + 1) % activeQR.animationSequence.length);
+            setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
         }, 250);
 
         sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
@@ -78,59 +148,16 @@ export default function TeacherDashboard() {
         if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
         if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
     };
-  }, [activeQR]);
+  }, [activeQR, fetchSessionStatus]);
 
-  const fetchSessionStatus = async () => {
-    if (!activeQR) return;
-    try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`/api/attendance/session/${activeQR.attendanceId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-            const data = await res.json();
-            setPresentCount(data.presentCount);
-            setAllStudents(data.allStudents);
-            setPresentStudentIds(new Set(data.presentStudentIds));
-        }
-    } catch (error) {
-        console.error("Failed to fetch session status", error);
-    }
-  };
-
-  const fetchTimetable = async () => {
-    setLoading(true);
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`/api/timetable`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTimetable(data.timetable);
-      } else {
-        toast.error("Failed to load timetable");
-      }
-    } catch (error) {
-      console.error("Error fetching timetable:", error);
-      toast.error("Failed to load timetable");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startAttendanceSession = async (semesterId: string, subjectName: string) => {
+  const startAttendanceSession = async (semester: Semester) => {
     const toastId = toast.loading("Starting attendance session...");
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`/api/attendance/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
-        body: JSON.stringify({ semesterId }),
+        body: JSON.stringify({ semesterId: semester._id }),
       });
       if (!res.ok) {
         const errorData = await res.json();
@@ -139,16 +166,15 @@ export default function TeacherDashboard() {
 
       const sessionData = await res.json();
       
-      const semester = timetable.find(t => t.semester._id === semesterId)?.semester;
-      
       setActiveQR({
         attendanceId: sessionData.attendanceId,
-        subject: subjectName,
+        subject: semester.subjectName,
         expiresAt: sessionData.expiresAt,
         animationSequence: sessionData.animationSequence,
-        totalStudents: semester?.students?.length || 0,
+        totalStudents: semester.students.length,
       });
-      setAllStudents(semester?.students || []);
+
+      setAllStudents(semester.students);
       toast.success("Session started!", { id: toastId });
     } catch (error) {
       toast.error((error as Error).message, { id: toastId });
@@ -180,6 +206,8 @@ export default function TeacherDashboard() {
     if (!activeQR) return;
     
     if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
+    if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
+    if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
     
     const toastId = toast.loading("Closing session...");
     try {
@@ -263,14 +291,9 @@ export default function TeacherDashboard() {
     
   const getClassStatus = (startTime: string, endTime: string) => {
     const now = new Date();
-    const [startH, startM] = startTime.split(':').map(Number);
-    const [endH, endM] = endTime.split(':').map(Number);
-
-    const startDate = new Date(now);
-    startDate.setHours(startH, startM, 0, 0);
-
-    const endDate = new Date(now);
-    endDate.setHours(endH, endM, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+    const startDate = new Date(`${todayStr}T${startTime}`);
+    const endDate = new Date(`${todayStr}T${endTime}`);
 
     if (now >= startDate && now <= endDate) return 'live';
     if (now > endDate) return 'completed';
@@ -278,7 +301,7 @@ export default function TeacherDashboard() {
   };
     
   const getQrDataForCurrentFrame = () => {
-    if (!activeQR) return "";
+    if (!activeQR || !activeQR.animationSequence || activeQR.animationSequence.length === 0) return "";
     const { attendanceId, animationSequence } = activeQR;
     const total = animationSequence.length;
     const data = animationSequence[currentFrameIndex];
@@ -292,12 +315,12 @@ export default function TeacherDashboard() {
   const today = new Date();
   const todayDayName = DAYS[today.getDay()];
   const todayClasses = timetable
-    .filter((entry: any) => entry.day === todayDayName)
-    .sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+    .filter((entry: TimetableEntry) => entry.day === todayDayName)
+    .sort((a: TimetableEntry, b: TimetableEntry) => a.startTime.localeCompare(b.startTime));
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-[60vh]">
         <p>Loading Dashboard...</p>
       </div>
     );
@@ -342,23 +365,27 @@ export default function TeacherDashboard() {
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
                 <DialogTitle>Manual Attendance</DialogTitle>
-                <DialogDescription>Select students who are present in class but unable to scan.</DialogDescription>
+                <DialogDescription>Select students who are present but unable to scan.</DialogDescription>
             </DialogHeader>
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-4">
-                {sortedStudents.map(student => (
-                    <div key={student._id} className="flex items-center space-x-3">
-                        <Checkbox 
-                            id={student._id}
-                            checked={presentStudentIds.has(student._id) || manualSelections.has(student._id)}
-                            disabled={presentStudentIds.has(student._id)}
-                            onCheckedChange={(checked) => handleManualSelectionChange(student._id, !!checked)}
-                        />
-                        <Label htmlFor={student._id} className="flex flex-col">
-                            <span>{student.name}</span>
-                            <span className="text-xs text-muted-foreground">{student.enrollmentNo}</span>
-                        </Label>
-                    </div>
-                ))}
+                {sortedStudents.length === 0 ? (
+                    <p className="text-center text-sm text-muted-foreground">No students in this class.</p>
+                ) : (
+                    sortedStudents.map(student => (
+                        <div key={student._id} className="flex items-center space-x-3">
+                            <Checkbox 
+                                id={student._id}
+                                checked={presentStudentIds.has(student._id) || manualSelections.has(student._id)}
+                                disabled={presentStudentIds.has(student._id)}
+                                onCheckedChange={(checked) => handleManualSelectionChange(student._id, !!checked)}
+                            />
+                            <Label htmlFor={student._id} className="flex flex-col">
+                                <span>{student.name}</span>
+                                <span className="text-xs text-muted-foreground">{student.enrollmentNo}</span>
+                            </Label>
+                        </div>
+                    ))
+                )}
             </div>
             <DialogFooter>
                 <Button variant="ghost" onClick={() => setIsManualModalOpen(false)}>Cancel</Button>
@@ -389,7 +416,7 @@ export default function TeacherDashboard() {
                   <p className="text-sm">No classes scheduled for today.</p>
                 </div>
               ) : (
-                todayClasses.map((classItem: any) => {
+                todayClasses.map((classItem) => {
                   const status = getClassStatus(classItem.startTime, classItem.endTime);
                   const isLive = status === 'live';
 
@@ -414,7 +441,7 @@ export default function TeacherDashboard() {
                       {isLive && !activeQR && (
                         <Button
                           size="sm"
-                          onClick={() => startAttendanceSession(classItem.semester._id, classItem.semester.subjectName)}
+                          onClick={() => startAttendanceSession(classItem.semester)}
                           className="ml-4 bg-primary hover:bg-primary/90 text-primary-foreground"
                         >
                           <QrCode className="w-4 h-4 mr-2" />

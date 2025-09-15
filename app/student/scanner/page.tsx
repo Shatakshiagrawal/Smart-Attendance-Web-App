@@ -20,15 +20,17 @@ export default function QRScannerPage() {
   
   const [totalChunks, setTotalChunks] = useState(0);
   const [collectedChunks, setCollectedChunks] = useState<Map<number, string>>(new Map());
+  // FIX: State to track the current session ID
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
 
-  // Use a ref to hold the scanner instance to prevent stale closures
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
   const resetState = useCallback(() => {
-    setScanStatus("idle");
+    setScanStatus("capturing"); // Go back to capturing state
     setError("");
     setTotalChunks(0);
     setCollectedChunks(new Map());
+    setCurrentSessionId(null);
   }, []);
   
   const verifyAttendance = async (id: string, assembledSequence: string[]) => {
@@ -48,10 +50,15 @@ export default function QRScannerPage() {
         toast.success(data.message || "Attendance marked successfully!");
         setTimeout(() => router.push("/student/dashboard"), 2000);
       } else {
-        if (response.status === 401 || response.status === 403) {
-          handleApiError(response);
+        // FIX: Handle specific 422 error without logging out
+        if (response.status === 422 || response.status === 409) {
+          setError(data.message);
+          setScanStatus("error");
+          toast.error(data.message);
+        } else if (response.status === 401 || response.status === 403) {
+          handleApiError(response); // This handles actual auth errors
         } else {
-          throw new Error(data.message || "An unknown error occurred while marking attendance.");
+          throw new Error(data.message || "An unknown error occurred.");
         }
       }
     } catch (err) {
@@ -61,74 +68,78 @@ export default function QRScannerPage() {
   };
 
   useEffect(() => {
-    resetState();
-    scannerRef.current = new Html5Qrcode("reader");
-    const scanner = scannerRef.current;
+    const html5QrCode = new Html5Qrcode("reader");
+    scannerRef.current = html5QrCode;
+
+    const startScanner = () => {
+        Html5Qrcode.getCameras().then(devices => {
+            if (devices && devices.length) {
+                html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    { fps: 10, qrbox: { width: 250, height: 350 } },
+                    onScanSuccess,
+                    (errorMessage) => {} // onScanFailure
+                ).catch(err => {
+                    setError("Failed to start scanner. Please grant camera permissions.");
+                    setScanStatus("error");
+                });
+            }
+        }).catch(err => {
+            setError("Could not get camera devices. Please grant camera permissions.");
+            setScanStatus("error");
+        });
+    }
 
     const onScanSuccess = (decodedText: string) => {
       try {
         const [id, total, index, data] = decodedText.split('|');
+        if (!id || !total || !index || !data) return; // Ignore invalid QR codes
+
         const chunkIndex = parseInt(index, 10);
         const totalChunksNeeded = parseInt(total, 10);
 
-        if (id && data && !isNaN(chunkIndex) && !isNaN(totalChunksNeeded)) {
-          setCollectedChunks(currentChunks => {
+        // FIX: Core logic to prevent mixing chunks from different sessions
+        if (currentSessionId && id !== currentSessionId) {
+            toast.error("QR Code changed. Restarting scan...");
+            setCollectedChunks(new Map());
+            setTotalChunks(totalChunksNeeded);
+            setCurrentSessionId(id);
+        }
+
+        if (!currentSessionId) {
+            setCurrentSessionId(id);
+            setTotalChunks(totalChunksNeeded);
+        }
+        
+        setCollectedChunks(currentChunks => {
             if (currentChunks.has(chunkIndex)) return currentChunks;
-            
             const newChunks = new Map(currentChunks).set(chunkIndex, data);
             
             if (newChunks.size === totalChunksNeeded) {
-              // CRITICAL FIX: Properly stop and clear the scanner
-              if (scanner && scanner.isScanning) {
-                scanner.stop()
-                  .then(() => {
-                    scanner.clear();
-                    const assembled = Array.from(newChunks.keys()).sort((a, b) => a - b).map(key => newChunks.get(key)!);
-                    verifyAttendance(id, assembled);
-                  })
-                  .catch(err => {
-                    console.error("Failed to stop scanner", err);
-                  });
-              }
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => {
+                        const assembled = Array.from({ length: totalChunksNeeded }, (_, i) => newChunks.get(i)!)
+                        verifyAttendance(id, assembled);
+                    }).catch(console.error);
+                }
             }
             return newChunks;
-          });
+        });
 
-          if (totalChunks === 0) setTotalChunks(totalChunksNeeded);
-        }
-      } catch(e) { /* ignore */ }
+      } catch(e) { /* ignore malformed QR codes */ }
     };
 
-    const onScanFailure = (error: any) => {};
-
-    setScanStatus("capturing");
-    Html5Qrcode.getCameras().then(devices => {
-      if (devices && devices.length) {
-          scanner.start(
-              { facingMode: "environment" }, 
-              { fps: 10, qrbox: { width: 250, height: 350 } },
-              onScanSuccess,
-              onScanFailure
-          ).catch(err => {
-              setError("Failed to start scanner. Please grant camera permissions.");
-              setScanStatus("error");
-          });
-      }
-    }).catch(err => {
-      setError("Could not get camera devices. Please grant camera permissions.");
-      setScanStatus("error");
-    });
+    resetState();
+    startScanner();
 
     return () => {
       if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().then(() => {
-          scannerRef.current?.clear();
-        }).catch(err => {
+        scannerRef.current.stop().catch(err => {
             console.error("Failed to clear scanner on unmount", err)
         });
       }
     };
-  }, [resetState, handleApiError, router]);
+  }, []); // Only run once on mount
 
   const renderContent = () => {
     const progress = totalChunks > 0 ? (collectedChunks.size / totalChunks) * 100 : 0;
@@ -168,7 +179,7 @@ export default function QRScannerPage() {
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
         <Card className="border-border/50">
             <CardContent className="p-4 sm:p-6">
-                <div id="reader" className="w-full max-w-md mx-auto aspect-square bg-black rounded-lg overflow-hidden"></div>
+                <div id="reader" className="w-full max-w-md mx-auto bg-black rounded-lg overflow-hidden"></div>
                 <div className="min-h-[120px] flex items-center justify-center p-4 max-w-md mx-auto">
                     {renderContent()}
                 </div>
