@@ -8,18 +8,19 @@ interface AnimatedQrDisplayProps {
   size?: number;
 }
 
-// FIX: A high-contrast, black-and-white color palette for maximum scannability.
 const qrColorPalette = {
-    dark: '#000000', // Black for the QR code modules
-    light: '#FFFFFF', // White for the background
+    dark: '#000000',
+    light: '#FFFFFF',
 };
 
 export function AnimatedQrDisplay({ data, size = 280 }: AnimatedQrDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null); // Ref for the container div
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -37,6 +38,12 @@ export function AnimatedQrDisplay({ data, size = 280 }: AnimatedQrDisplayProps) 
         dark: qrColorPalette.dark,
         light: qrColorPalette.light,
       },
+    }).then(() => {
+        // FIX: Add a class to trigger the animation, then remove it
+        container.classList.add('animate-qr-pulse');
+        setTimeout(() => {
+            container.classList.remove('animate-qr-pulse');
+        }, 300); // Duration should match the animation
     }).catch(err => {
       console.error("Failed to generate QR Code:", err);
     });
@@ -45,7 +52,8 @@ export function AnimatedQrDisplay({ data, size = 280 }: AnimatedQrDisplayProps) 
 
   return (
     <div 
-        className="relative p-2 bg-white rounded-2xl shadow-lg"
+        ref={containerRef} // Add ref to the container
+        className="relative p-2 bg-white rounded-2xl shadow-lg transition-opacity duration-300"
         style={{ width: size + 16, height: size + 16 }}
     >
       <canvas 

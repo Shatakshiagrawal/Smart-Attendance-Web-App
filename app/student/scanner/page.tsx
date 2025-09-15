@@ -18,21 +18,16 @@ export default function QRScannerPage() {
   const [scanStatus, setScanStatus] = useState<"idle" | "capturing" | "verifying" | "success" | "error">("idle");
   const [error, setError] = useState("");
   
-  const [totalChunks, setTotalChunks] = useState(0);
-  const [collectedChunks, setCollectedChunks] = useState<Map<number, string>>(new Map());
-  // FIX: State to track the current session ID
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-
-  const scannerRef = useRef<Html5Qrcode | null>(null);
-
-  const resetState = useCallback(() => {
-    setScanStatus("capturing"); // Go back to capturing state
-    setError("");
-    setTotalChunks(0);
-    setCollectedChunks(new Map());
-    setCurrentSessionId(null);
-  }, []);
+  // State for UI updates
+  const [progress, setProgress] = useState(0);
+  const [chunksCollectedCount, setChunksCollectedCount] = useState(0);
+  const [totalChunksCount, setTotalChunksCount] = useState(0);
   
+  // Refs for stable data access within the scanner callback
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const collectedChunksRef = useRef<Map<number, string>>(new Map());
+  const currentSessionIdRef = useRef<string | null>(null);
+
   const verifyAttendance = async (id: string, assembledSequence: string[]) => {
     setScanStatus("verifying");
     try {
@@ -50,13 +45,12 @@ export default function QRScannerPage() {
         toast.success(data.message || "Attendance marked successfully!");
         setTimeout(() => router.push("/student/dashboard"), 2000);
       } else {
-        // FIX: Handle specific 422 error without logging out
         if (response.status === 422 || response.status === 409) {
           setError(data.message);
           setScanStatus("error");
           toast.error(data.message);
         } else if (response.status === 401 || response.status === 403) {
-          handleApiError(response); // This handles actual auth errors
+          handleApiError(response);
         } else {
           throw new Error(data.message || "An unknown error occurred.");
         }
@@ -66,19 +60,70 @@ export default function QRScannerPage() {
       setScanStatus("error");
     }
   };
-
+  
   useEffect(() => {
+    // Ensure this runs only once
+    if (scannerRef.current) return;
+
     const html5QrCode = new Html5Qrcode("reader");
     scannerRef.current = html5QrCode;
 
+    const onScanSuccess = (decodedText: string) => {
+      try {
+        const [id, totalStr, indexStr, data] = decodedText.split('|');
+        if (!id || !totalStr || !indexStr || !data) return;
+
+        const chunkIndex = parseInt(indexStr, 10);
+        const totalChunksNeeded = parseInt(totalStr, 10);
+
+        // --- THE CRITICAL FIX ---
+        // Use refs to access the latest state within the callback
+        const currentSessionId = currentSessionIdRef.current;
+        const collectedChunks = collectedChunksRef.current;
+
+        // If the session ID changes, reset everything
+        if (currentSessionId && id !== currentSessionId) {
+          toast.error("QR Code changed. Restarting scan...");
+          collectedChunks.clear();
+          currentSessionIdRef.current = id;
+          setChunksCollectedCount(0);
+          setTotalChunksCount(totalChunksNeeded);
+        }
+
+        // Lock onto the first session ID scanned
+        if (!currentSessionId) {
+          currentSessionIdRef.current = id;
+          setTotalChunksCount(totalChunksNeeded);
+        }
+
+        // Collect new chunks only for the current session
+        if (id === currentSessionIdRef.current && !collectedChunks.has(chunkIndex)) {
+            collectedChunks.set(chunkIndex, data);
+            setChunksCollectedCount(collectedChunks.size);
+            setProgress((collectedChunks.size / totalChunksNeeded) * 100);
+
+            // If all chunks are collected, stop the scanner and verify
+            if (collectedChunks.size === totalChunksNeeded) {
+                if (html5QrCode && html5QrCode.isScanning) {
+                    html5QrCode.stop().then(() => {
+                        const assembled = Array.from({ length: totalChunksNeeded }, (_, i) => collectedChunks.get(i)!)
+                        verifyAttendance(id, assembled);
+                    }).catch(console.error);
+                }
+            }
+        }
+      } catch(e) { /* ignore malformed QR codes */ }
+    };
+
     const startScanner = () => {
+        setScanStatus("capturing");
         Html5Qrcode.getCameras().then(devices => {
             if (devices && devices.length) {
                 html5QrCode.start(
                     { facingMode: "environment" }, 
                     { fps: 10, qrbox: { width: 250, height: 350 } },
                     onScanSuccess,
-                    (errorMessage) => {} // onScanFailure
+                    (errorMessage) => {}
                 ).catch(err => {
                     setError("Failed to start scanner. Please grant camera permissions.");
                     setScanStatus("error");
@@ -90,66 +135,23 @@ export default function QRScannerPage() {
         });
     }
 
-    const onScanSuccess = (decodedText: string) => {
-      try {
-        const [id, total, index, data] = decodedText.split('|');
-        if (!id || !total || !index || !data) return; // Ignore invalid QR codes
-
-        const chunkIndex = parseInt(index, 10);
-        const totalChunksNeeded = parseInt(total, 10);
-
-        // FIX: Core logic to prevent mixing chunks from different sessions
-        if (currentSessionId && id !== currentSessionId) {
-            toast.error("QR Code changed. Restarting scan...");
-            setCollectedChunks(new Map());
-            setTotalChunks(totalChunksNeeded);
-            setCurrentSessionId(id);
-        }
-
-        if (!currentSessionId) {
-            setCurrentSessionId(id);
-            setTotalChunks(totalChunksNeeded);
-        }
-        
-        setCollectedChunks(currentChunks => {
-            if (currentChunks.has(chunkIndex)) return currentChunks;
-            const newChunks = new Map(currentChunks).set(chunkIndex, data);
-            
-            if (newChunks.size === totalChunksNeeded) {
-                if (html5QrCode && html5QrCode.isScanning) {
-                    html5QrCode.stop().then(() => {
-                        const assembled = Array.from({ length: totalChunksNeeded }, (_, i) => newChunks.get(i)!)
-                        verifyAttendance(id, assembled);
-                    }).catch(console.error);
-                }
-            }
-            return newChunks;
-        });
-
-      } catch(e) { /* ignore malformed QR codes */ }
-    };
-
-    resetState();
     startScanner();
 
     return () => {
       if (scannerRef.current && scannerRef.current.isScanning) {
-        scannerRef.current.stop().catch(err => {
-            console.error("Failed to clear scanner on unmount", err)
-        });
+        scannerRef.current.stop().catch(console.error);
       }
     };
-  }, []); // Only run once on mount
+  }, []); // Empty dependency array ensures this runs only once
 
   const renderContent = () => {
-    const progress = totalChunks > 0 ? (collectedChunks.size / totalChunks) * 100 : 0;
     switch (scanStatus) {
       case "capturing":
         return (
             <div className="text-center flex flex-col items-center gap-3 w-full">
                 <p className="text-muted-foreground mt-2">Scanning...</p>
                 <Progress value={progress} className="w-full" />
-                <p className="text-sm font-bold">{collectedChunks.size} of {totalChunks || '?'} chunks found</p>
+                <p className="text-sm font-bold">{chunksCollectedCount} of {totalChunksCount || '?'} chunks found</p>
             </div>
         );
       case "verifying": return <div className="text-center flex flex-col items-center gap-2"><Loader2 className="animate-spin w-12 h-12" /> Verifying...</div>;

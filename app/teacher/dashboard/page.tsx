@@ -135,7 +135,7 @@ export default function TeacherDashboard() {
     if (activeQR) {
         animationIntervalRef.current = setInterval(() => {
             setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
-        }, 250);
+        }, 500);
 
         sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
         
