@@ -21,6 +21,8 @@ const fadeInUp = {
 export default function TeacherProfile() {
   const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(false)
+  
+  // FIX: Use the consistent firstName and lastName from the AuthProvider
   const [profileData, setProfileData] = useState({
     firstName: user?.firstName || "",
     lastName: user?.lastName || "",
@@ -83,8 +85,7 @@ export default function TeacherProfile() {
             <div className="flex flex-col sm:flex-row items-center sm:items-start space-y-4 sm:space-y-0 sm:space-x-6">
               <Avatar className="h-20 w-20 sm:h-24 sm:w-24 border-4 border-white/20">
                 <AvatarFallback className="bg-white/20 text-white text-xl sm:text-2xl font-bold">
-                  {profileData.firstName[0]}
-                  {profileData.lastName[0]}
+                  {(profileData.firstName?.[0] || '')}{(profileData.lastName?.[0] || '')}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 text-center sm:text-left">

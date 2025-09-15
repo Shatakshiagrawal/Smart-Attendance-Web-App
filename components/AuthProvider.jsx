@@ -11,6 +11,17 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
     const router = useRouter();
 
+    // FIX: Function to process user data consistently
+    const processUserData = (data) => {
+        if (!data || !data.name) return data;
+        const nameParts = data.name.split(' ');
+        return {
+            ...data,
+            firstName: nameParts[0],
+            lastName: nameParts.slice(1).join(' '),
+        };
+    };
+
     const checkAuth = async () => {
         setLoading(true);
         const token = localStorage.getItem('token');
@@ -31,7 +42,7 @@ export const AuthProvider = ({ children }) => {
 
             if (res.ok) {
                 const data = await res.json();
-                setUser(data);
+                setUser(processUserData(data)); // Process data on auth check
             } else {
                 await logout();
             }
@@ -60,8 +71,9 @@ export const AuthProvider = ({ children }) => {
 
             const data = await res.json();
             localStorage.setItem('token', data.token);
-            setUser(data);
-            return data;
+            const processedUser = processUserData(data); // Process data on login
+            setUser(processedUser);
+            return processedUser;
         } catch (error) {
             console.error('Login error:', error);
             setUser(null);

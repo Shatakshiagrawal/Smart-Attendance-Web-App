@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { QrCode, Clock, X, Calendar, Users, Edit } from "lucide-react"
@@ -39,7 +39,6 @@ export default function TeacherDashboard() {
     totalStudents: number;
   } | null>(null);
 
-  // New state for live count and manual attendance
   const [presentCount, setPresentCount] = useState(0);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -62,7 +61,6 @@ export default function TeacherDashboard() {
     };
   }, [user]);
 
-  // Effect for QR animation and polling
   useEffect(() => {
     if (activeQR) {
         animationIntervalRef.current = setInterval(() => {
@@ -71,9 +69,8 @@ export default function TeacherDashboard() {
 
         sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
         
-        // Start polling for attendance status
-        fetchSessionStatus(); // Fetch immediately
-        statusPollIntervalRef.current = setInterval(fetchSessionStatus, 5000); // Poll every 5 seconds
+        fetchSessionStatus();
+        statusPollIntervalRef.current = setInterval(fetchSessionStatus, 5000);
     }
     
     return () => {
@@ -100,7 +97,6 @@ export default function TeacherDashboard() {
         console.error("Failed to fetch session status", error);
     }
   };
-
 
   const fetchTimetable = async () => {
     setLoading(true);
@@ -143,14 +139,16 @@ export default function TeacherDashboard() {
 
       const sessionData = await res.json();
       
+      const semester = timetable.find(t => t.semester._id === semesterId)?.semester;
+      
       setActiveQR({
         attendanceId: sessionData.attendanceId,
         subject: subjectName,
         expiresAt: sessionData.expiresAt,
         animationSequence: sessionData.animationSequence,
-        totalStudents: sessionData.totalStudents,
+        totalStudents: semester?.students?.length || 0,
       });
-      setAllStudents(sessionData.students); // Set students for manual modal
+      setAllStudents(semester?.students || []);
       toast.success("Session started!", { id: toastId });
     } catch (error) {
       toast.error((error as Error).message, { id: toastId });
@@ -158,11 +156,27 @@ export default function TeacherDashboard() {
   };
   
   const refreshSequence = async () => {
-    // ... (This function remains the same)
+    if (!activeQR) return;
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/attendance/refresh-sequence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+        body: JSON.stringify({ attendanceId: activeQR.attendanceId }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveQR(prev => prev ? { ...prev, animationSequence: data.newAnimationSequence } : null);
+        toast.success("QR Code has been refreshed.");
+      } else {
+        toast.error("Failed to refresh QR code.");
+      }
+    } catch (error) {
+      toast.error("Error refreshing QR code.");
+    }
   };
 
   const closeQrModal = async () => {
-    // ... (This function remains the same, but we reset more state)
     if (!activeQR) return;
     
     if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
@@ -227,30 +241,50 @@ export default function TeacherDashboard() {
         const data = await res.json();
         if (res.ok) {
             toast.success(data.message, { id: toastId });
-            fetchSessionStatus(); // Refresh the counts
-            setManualSelections(new Set()); // Reset selections
+            fetchSessionStatus();
+            setManualSelections(new Set());
             setIsManualModalOpen(false);
         } else {
             throw new Error(data.message || 'Failed to save manual attendance.');
         }
-
     } catch (error) {
         toast.error((error as Error).message, { id: toastId });
     }
   };
-
+    
   const formatTime = (time: string) => {
-    // ... (This function remains the same)
+    if (!time) return '';
+    const [hours, minutes] = time.split(':');
+    const date = new Date();
+    date.setHours(parseInt(hours, 10));
+    date.setMinutes(parseInt(minutes, 10));
+    return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
   };
-
+    
   const getClassStatus = (startTime: string, endTime: string) => {
-    // ... (This function remains the same)
+    const now = new Date();
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
+
+    const startDate = new Date(now);
+    startDate.setHours(startH, startM, 0, 0);
+
+    const endDate = new Date(now);
+    endDate.setHours(endH, endM, 0, 0);
+
+    if (now >= startDate && now <= endDate) return 'live';
+    if (now > endDate) return 'completed';
+    return 'upcoming';
+  };
+    
+  const getQrDataForCurrentFrame = () => {
+    if (!activeQR) return "";
+    const { attendanceId, animationSequence } = activeQR;
+    const total = animationSequence.length;
+    const data = animationSequence[currentFrameIndex];
+    return `${attendanceId}|${total}|${currentFrameIndex}|${data}`;
   };
 
-  const getQrDataForCurrentFrame = () => {
-    // ... (This function remains the same)
-  };
-  
   const sortedStudents = useMemo(() => {
     return [...allStudents].sort((a, b) => a.name.localeCompare(b.name));
   }, [allStudents]);
@@ -308,7 +342,7 @@ export default function TeacherDashboard() {
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
                 <DialogTitle>Manual Attendance</DialogTitle>
-                <CardDescription>Select students who are present in class but unable to scan.</CardDescription>
+                <DialogDescription>Select students who are present in class but unable to scan.</DialogDescription>
             </DialogHeader>
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-4">
                 {sortedStudents.map(student => (
