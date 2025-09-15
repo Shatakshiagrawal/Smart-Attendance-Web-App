@@ -45,11 +45,13 @@ export default function TeacherDashboard() {
 
   useEffect(() => {
     if (activeQR) {
+        // FASTER ANIMATION: Change frames every 250ms
         animationIntervalRef.current = setInterval(() => {
             setCurrentFrameIndex(prev => (prev + 1) % activeQR.animationSequence.length);
-        }, 800);
+        }, 250);
 
-        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 10000);
+        // FASTER REFRESH: Get a new set of QR codes every 15 seconds
+        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
     }
     
     return () => {

@@ -22,31 +22,35 @@ export default function LoginPage() {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [role, setRole] = useState("student")
-  const { login,user } = useAuth()
+  const { login} = useAuth()
   const router = useRouter()
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError("")
-    setLoading(true)
+   const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
     try {
-      const sucess = await login(email, password, role)
-      if (sucess) {
-        if (user.role === "student") {
-          router.push("/student/dashboard")
+      // The login function returns the new user object on success
+      const loggedInUser = await login(email, password, role);
+
+      // CRITICAL FIX: Use the 'loggedInUser' object for the redirect
+      if (loggedInUser) {
+        if (loggedInUser.role === "student") {
+          router.push("/student/dashboard");
         } else {
-          router.push("/teacher/dashboard")
+          router.push("/teacher/dashboard");
         }
       } else {
-        setError("Invalid email or password")
+        // This case will be caught by the catch block, but it's good practice
+        setError("Invalid email or password");
       }
     } catch (err: any) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
 
   return (
