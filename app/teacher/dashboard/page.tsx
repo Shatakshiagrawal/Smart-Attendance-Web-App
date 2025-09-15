@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+// FIX: Added 'useCallback' to the import list from React
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -123,7 +124,6 @@ export default function TeacherDashboard() {
         setAllStudents(data.allStudents);
         setPresentStudentIds(new Set(data.presentStudentIds));
         
-        // Update total students in case it changed
         setActiveQR(prev => prev ? { ...prev, totalStudents: data.allStudents.length } : null);
 
     } catch (error) {
