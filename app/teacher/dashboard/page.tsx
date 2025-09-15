@@ -131,10 +131,11 @@ export default function TeacherDashboard() {
   }, [activeQR, handleApiError]);
 
   useEffect(() => {
-    if (activeQR && activeQR.animationSequence?.length > 0) { // **CRITICAL FIX HERE**
+    // FIX: Added a safeguard to ensure animationSequence exists and has length before starting intervals.
+    if (activeQR && activeQR.animationSequence && activeQR.animationSequence.length > 0) {
         animationIntervalRef.current = setInterval(() => {
-            setCurrentFrameIndex(prev => (prev + 1) % activeQR.animationSequence.length);
-        }, 500); // Slower animation speed
+            setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
+        }, 500);
 
         sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 15000);
         
@@ -170,10 +171,10 @@ export default function TeacherDashboard() {
         subject: semester.subjectName,
         expiresAt: sessionData.expiresAt,
         animationSequence: sessionData.animationSequence,
-        totalStudents: semester.students.length,
+        totalStudents: semester?.students?.length || 0, // FIX: Safely access length
       });
 
-      setAllStudents(semester.students);
+      setAllStudents(semester.students || []); // FIX: Handle potentially missing students array
       toast.success("Session started!", { id: toastId });
     } catch (error) {
       toast.error((error as Error).message, { id: toastId });
