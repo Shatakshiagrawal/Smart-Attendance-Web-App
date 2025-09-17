@@ -20,20 +20,20 @@ export default function QRScannerPage() {
   const [scanStatus, setScanStatus] = useState<"idle" | "capturing" | "verifying" | "success" | "error">("idle");
   const [error, setError] = useState("");
   
-  // State for UI updates
   const [progress, setProgress] = useState(0);
   const [chunksCollectedCount, setChunksCollectedCount] = useState(0);
   const [totalChunksCount, setTotalChunksCount] = useState(0);
 
-  // State for zoom functionality
   const [zoom, setZoom] = useState(1);
   const [zoomCapabilities, setZoomCapabilities] = useState<{ min: number; max: number; step: number } | null>(null);
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   
-  // Refs for stable data access within the scanner callback
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const collectedChunksRef = useRef<Map<number, string>>(new Map());
   const currentSessionIdRef = useRef<string | null>(null);
+  // --- ADDED: Ref to track the current sequence version ---
+  const currentSequenceVersionRef = useRef<number | null>(null);
+
 
   const verifyAttendance = async (id: string, assembledSequence: string[]) => {
     setScanStatus("verifying");
@@ -94,40 +94,45 @@ export default function QRScannerPage() {
 
     const onScanSuccess = (decodedText: string) => {
       try {
-        const [id, totalStr, indexStr, data] = decodedText.split('|');
-        if (!id || !totalStr || !indexStr || !data) return;
+        const [id, versionStr, totalStr, indexStr, data] = decodedText.split('|');
+        if (!id || !versionStr || !totalStr || !indexStr || !data) return;
 
+        const sequenceVersion = parseInt(versionStr, 10);
         const chunkIndex = parseInt(indexStr, 10);
         const totalChunksNeeded = parseInt(totalStr, 10);
+        
+        const establishedVersion = currentSequenceVersionRef.current;
 
-        // Case 1: This is the very first scan of any QR code in this session.
+        // --- NEW LOGIC: Check for a newer version ---
+        if (establishedVersion && sequenceVersion > establishedVersion) {
+            toast.error("QR Code changed. Restarting scan...");
+            collectedChunksRef.current.clear();
+            currentSessionIdRef.current = id;
+            currentSequenceVersionRef.current = sequenceVersion; // Update to the new version
+            setChunksCollectedCount(0);
+            setTotalChunksCount(totalChunksNeeded);
+        }
+
+        // Establish session and version on the first valid scan
         if (!currentSessionIdRef.current) {
-          currentSessionIdRef.current = id;
-          setTotalChunksCount(totalChunksNeeded);
+            currentSessionIdRef.current = id;
+            currentSequenceVersionRef.current = sequenceVersion;
+            setTotalChunksCount(totalChunksNeeded);
         }
-
-        // Case 2: The scanned QR code belongs to a different session (it was refreshed).
-        // Reset everything and proceed with this chunk as the first of the new session.
-        if (id !== currentSessionIdRef.current) {
-          toast.error("QR Code changed. Restarting scan...");
-          collectedChunksRef.current.clear();
-          currentSessionIdRef.current = id;
-          setChunksCollectedCount(0); // Reset UI counter
-          setTotalChunksCount(totalChunksNeeded); // Reset UI total
-        }
-
-        // Case 3: The scanned QR is part of the current session.
-        const collectedChunks = collectedChunksRef.current;
-        if (id === currentSessionIdRef.current && !collectedChunks.has(chunkIndex)) {
+        
+        // Process chunk only if it matches the current session and version
+        if (id === currentSessionIdRef.current && 
+            sequenceVersion === currentSequenceVersionRef.current && 
+            !collectedChunksRef.current.has(chunkIndex)) {
+            
+            const collectedChunks = collectedChunksRef.current;
             collectedChunks.set(chunkIndex, data);
             
-            // Update UI state
             setChunksCollectedCount(collectedChunks.size);
             setProgress((collectedChunks.size / totalChunksNeeded) * 100);
 
-            // If all chunks are collected, stop the scanner and verify.
             if (collectedChunks.size === totalChunksNeeded) {
-                if (html5QrCode && html5QrCode.isScanning) {
+                if (html5QrCode.isScanning) {
                     html5QrCode.stop().then(() => {
                         const assembled = Array.from({ length: totalChunksNeeded }, (_, i) => collectedChunks.get(i)!)
                         verifyAttendance(id, assembled);
@@ -181,7 +186,7 @@ export default function QRScannerPage() {
         scannerRef.current.stop().catch(console.error);
       }
     };
-  }, []); // Empty dependency array ensures this runs only once on mount.
+  }, []);
 
 
   const renderContent = () => {

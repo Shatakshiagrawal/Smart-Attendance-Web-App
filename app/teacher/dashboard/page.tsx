@@ -38,6 +38,17 @@ interface TimetableEntry {
     endTime: string;
 }
 
+// MODIFIED: Updated the ActiveQRState interface
+interface ActiveQRState {
+  attendanceId: string;
+  subject: string;
+  expiresAt: string;
+  animationSequence: string[];
+  sequenceVersion: number; // Add sequenceVersion to state
+  totalStudents: number;
+}
+
+
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
   animate: { opacity: 1, y: 0 },
@@ -48,13 +59,7 @@ export default function TeacherDashboard() {
   const { user, handleApiError } = useAuth();
   const [timetable, setTimetable] = useState<TimetableEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeQR, setActiveQR] = useState<{
-    attendanceId: string;
-    subject: string;
-    expiresAt: string;
-    animationSequence: string[];
-    totalStudents: number;
-  } | null>(null);
+  const [activeQR, setActiveQR] = useState<ActiveQRState | null>(null);
 
   const [presentCount, setPresentCount] = useState(0);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
@@ -129,10 +134,6 @@ export default function TeacherDashboard() {
   }, [activeQR, handleApiError]);
 
 
-  // --- FIX: Separated interval management into two useEffect hooks ---
-
-  // Effect 1: Manages the QR animation and the 7-second refresh.
-  // This runs ONLY when the session starts or stops.
   useEffect(() => {
     if (activeQR) {
         animationIntervalRef.current = setInterval(() => {
@@ -146,10 +147,8 @@ export default function TeacherDashboard() {
         if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
         if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
     };
-  }, [activeQR?.attendanceId]); // Dependency on a stable property of the session
+  }, [activeQR?.attendanceId]);
 
-  // Effect 2: Manages the 5-second status poll.
-  // This runs when the session starts and stops, but its timer is independent.
   useEffect(() => {
     if (activeQR) {
         fetchSessionStatus(); // Initial fetch
@@ -183,6 +182,7 @@ export default function TeacherDashboard() {
         subject: semester.subjectName,
         expiresAt: sessionData.expiresAt,
         animationSequence: sessionData.animationSequence,
+        sequenceVersion: sessionData.sequenceVersion, // MODIFIED: Store initial version
         totalStudents: semester?.students?.length || 0,
       });
 
@@ -204,7 +204,12 @@ export default function TeacherDashboard() {
       });
       if (res.ok) {
         const data = await res.json();
-        setActiveQR(prev => prev ? { ...prev, animationSequence: data.newAnimationSequence } : null);
+        // MODIFIED: Update state with new sequence and version
+        setActiveQR(prev => prev ? { 
+            ...prev, 
+            animationSequence: data.newAnimationSequence,
+            sequenceVersion: data.newSequenceVersion 
+        } : null);
         toast.success("QR Code has been refreshed.");
       } else {
         toast.error("Failed to refresh QR code.");
@@ -314,10 +319,11 @@ export default function TeacherDashboard() {
     
   const getQrDataForCurrentFrame = () => {
     if (!activeQR || !activeQR.animationSequence || activeQR.animationSequence.length === 0) return "";
-    const { attendanceId, animationSequence } = activeQR;
+    const { attendanceId, animationSequence, sequenceVersion } = activeQR;
     const total = animationSequence.length;
     const data = animationSequence[currentFrameIndex];
-    return `${attendanceId}|${total}|${currentFrameIndex}|${data}`;
+    // --- MODIFIED: Embed the sequenceVersion into the QR data ---
+    return `${attendanceId}|${sequenceVersion}|${total}|${currentFrameIndex}|${data}`;
   };
 
   const sortedStudents = useMemo(() => {
