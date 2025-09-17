@@ -25,7 +25,7 @@ export default function QRScannerPage() {
   const [chunksCollectedCount, setChunksCollectedCount] = useState(0);
   const [totalChunksCount, setTotalChunksCount] = useState(0);
 
-  // --- ADDED: State for zoom functionality ---
+  // State for zoom functionality
   const [zoom, setZoom] = useState(1);
   const [zoomCapabilities, setZoomCapabilities] = useState<{ min: number; max: number; step: number } | null>(null);
   const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
@@ -68,7 +68,6 @@ export default function QRScannerPage() {
     }
   };
   
-  // --- ADDED: Handler for zoom slider changes ---
   const handleZoomChange = (newZoomValue: number) => {
     if (cameraTrackRef.current && zoomCapabilities) {
         try {
@@ -100,27 +99,33 @@ export default function QRScannerPage() {
 
         const chunkIndex = parseInt(indexStr, 10);
         const totalChunksNeeded = parseInt(totalStr, 10);
-        const currentSessionId = currentSessionIdRef.current;
-        const collectedChunks = collectedChunksRef.current;
 
-        if (currentSessionId && id !== currentSessionId) {
+        // Case 1: This is the very first scan of any QR code in this session.
+        if (!currentSessionIdRef.current) {
+          currentSessionIdRef.current = id;
+          setTotalChunksCount(totalChunksNeeded);
+        }
+
+        // Case 2: The scanned QR code belongs to a different session (it was refreshed).
+        // Reset everything and proceed with this chunk as the first of the new session.
+        if (id !== currentSessionIdRef.current) {
           toast.error("QR Code changed. Restarting scan...");
-          collectedChunks.clear();
+          collectedChunksRef.current.clear();
           currentSessionIdRef.current = id;
-          setChunksCollectedCount(0);
-          setTotalChunksCount(totalChunksNeeded);
+          setChunksCollectedCount(0); // Reset UI counter
+          setTotalChunksCount(totalChunksNeeded); // Reset UI total
         }
 
-        if (!currentSessionId) {
-          currentSessionIdRef.current = id;
-          setTotalChunksCount(totalChunksNeeded);
-        }
-
+        // Case 3: The scanned QR is part of the current session.
+        const collectedChunks = collectedChunksRef.current;
         if (id === currentSessionIdRef.current && !collectedChunks.has(chunkIndex)) {
             collectedChunks.set(chunkIndex, data);
+            
+            // Update UI state
             setChunksCollectedCount(collectedChunks.size);
             setProgress((collectedChunks.size / totalChunksNeeded) * 100);
 
+            // If all chunks are collected, stop the scanner and verify.
             if (collectedChunks.size === totalChunksNeeded) {
                 if (html5QrCode && html5QrCode.isScanning) {
                     html5QrCode.stop().then(() => {
@@ -143,20 +148,19 @@ export default function QRScannerPage() {
                     onScanSuccess,
                     (errorMessage) => {}
                 ).then(() => {
-                    // --- ADDED: Get camera track and capabilities after scanner starts ---
                     const videoElement = document.getElementById('reader')?.querySelector('video');
                     if (videoElement && videoElement.srcObject instanceof MediaStream) {
                         const track = videoElement.srcObject.getVideoTracks()[0];
                         cameraTrackRef.current = track;
                         const capabilities = track.getCapabilities();
                         
-                        if ('zoom' in capabilities) {
+                        if (capabilities && 'zoom' in capabilities) {
                             setZoomCapabilities({
                                 min: capabilities.zoom!.min,
                                 max: capabilities.zoom!.max,
                                 step: capabilities.zoom!.step,
                             });
-                            setZoom(capabilities.zoom!.min); // Start at minimum zoom
+                            setZoom(capabilities.zoom!.min);
                         }
                     }
                 }).catch(err => {
@@ -177,7 +181,8 @@ export default function QRScannerPage() {
         scannerRef.current.stop().catch(console.error);
       }
     };
-  }, []);
+  }, []); // Empty dependency array ensures this runs only once on mount.
+
 
   const renderContent = () => {
     switch (scanStatus) {
@@ -218,7 +223,6 @@ export default function QRScannerPage() {
             <CardContent className="p-4 sm:p-6">
                 <div id="reader" className="w-full max-w-md mx-auto bg-black rounded-lg overflow-hidden"></div>
                 
-                {/* --- ADDED: Zoom Slider UI --- */}
                 {zoomCapabilities && (
                     <div className="max-w-md mx-auto mt-4 space-y-2">
                         <Label htmlFor="zoom-slider" className="flex items-center gap-2 text-muted-foreground">

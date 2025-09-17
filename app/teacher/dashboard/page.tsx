@@ -128,6 +128,7 @@ export default function TeacherDashboard() {
     }
   }, [activeQR, handleApiError]);
 
+
   // --- FIX: Separated interval management into two useEffect hooks ---
 
   // Effect 1: Manages the QR animation and the 7-second refresh.
