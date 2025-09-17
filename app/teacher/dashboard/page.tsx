@@ -137,7 +137,7 @@ export default function TeacherDashboard() {
             setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
         }, 500);
 
-        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 7000); // every 7 seconds
+        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 7000); // Refresh every 7 seconds
         
         fetchSessionStatus();
         statusPollIntervalRef.current = setInterval(fetchSessionStatus, 5000);
