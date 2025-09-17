@@ -10,7 +10,7 @@ import "./globals.css"
 import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export const metadata: Metadata = {
-  title: "v0 App",
+  title: "Zippin",
   description: "Created with v0",
   generator: "v0.app",
 }

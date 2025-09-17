@@ -73,7 +73,7 @@ export default function LandingPage() {
           <div className="w-10 h-10 bg-[#00ABE4] rounded-xl flex items-center justify-center">
             <QrCode className="w-6 h-6 text-white" />
           </div>
-          <span className="text-2xl font-bold text-gray-900">AttendanceQR</span>
+          <span className="text-2xl font-bold text-gray-900">Zippin</span>
         </div>
 
         <div className="flex items-center space-x-4">
@@ -405,7 +405,7 @@ export default function LandingPage() {
                 <div className="w-10 h-10 bg-[#00ABE4] rounded-xl flex items-center justify-center">
                   <QrCode className="w-6 h-6 text-white" />
                 </div>
-                <span className="text-2xl font-bold">AttendanceQR</span>
+                <span className="text-2xl font-bold">Zippin</span>
               </div>
               <p className="text-gray-300 leading-relaxed mb-6">
                 Revolutionary attendance tracking system using dynamic QR codes. Secure, efficient, and proxy-proof
@@ -418,15 +418,15 @@ export default function LandingPage() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <Mail className="w-5 h-5 text-[#00ABE4]" />
-                  <span className="text-gray-300">contact@attendanceqr.com</span>
+                  <span className="text-gray-300">contact@zippin.com</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <Phone className="w-5 h-5 text-[#00ABE4]" />
-                  <span className="text-gray-300">+1 (555) 123-4567</span>
+                  <span className="text-gray-300">+91 (555) 123-4567</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <MapPin className="w-5 h-5 text-[#00ABE4]" />
-                  <span className="text-gray-300">123 Tech Street, Silicon Valley</span>
+                  <span className="text-gray-300">JEC JABALPUR</span>
                 </div>
               </div>
             </div>
@@ -452,7 +452,7 @@ export default function LandingPage() {
 
           <div className="border-t border-gray-800 mt-12 pt-8 text-center">
             <p className="text-gray-400">
-              © 2024 AttendanceQR. All rights reserved. | Privacy Policy | Terms of Service
+              © 2024 Zippin. All rights reserved. | Privacy Policy | Terms of Service
             </p>
           </div>
         </div>

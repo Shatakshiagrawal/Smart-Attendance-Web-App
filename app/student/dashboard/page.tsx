@@ -1,28 +1,23 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { TrendingUp, Clock, QrCode, CheckCircle, Loader2 } from "lucide-react"
-import { useAuth } from "@/components/AuthProvider.jsx" 
+import { useAuth } from "@/components/AuthProvider.jsx"
 import { useRouter } from "next/navigation"
 import Link from "next/link" // Import the Link component
 import toast, { Toaster } from "react-hot-toast"
 
-// Mock data
+// Mock data (for stats, as requested to keep)
 const mockStudentStats = {
   overallAttendance: 87.5,
   classesAttended: 142,
   totalClasses: 162,
 }
-
-const mockUpcomingClasses = [
-  { id: "1", subject: "Mathematics", time: "09:00 AM", room: "Room 101", teacher: "Dr. Smith", date: "Today" },
-  { id: "2", subject: "Physics", time: "11:00 AM", room: "Lab 201", teacher: "Prof. Johnson", date: "Today" },
-]
 
 const fadeInUp = {
   initial: { opacity: 0, y: 20 },
@@ -30,15 +25,88 @@ const fadeInUp = {
   transition: { duration: 0.5 },
 }
 
+// Function to determine class status
+const getClassStatus = (startTime: string, endTime: string) => {
+  const now = new Date();
+  const startDate = new Date(startTime);
+  const endDate = new Date(endTime);
+
+  if (now >= startDate && now <= endDate) {
+    return "Live";
+  } else if (now < startDate) {
+    return "Upcoming";
+  } else {
+    return "Expired";
+  }
+};
+
+// Function to format the date and time
+const formatDateTime = (dateString: string) => {
+  const date = new Date(dateString);
+  const formattedTime = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (date.toDateString() === today.toDateString()) {
+    return `Today at ${formattedTime}`;
+  } else if (date.toDateString() === tomorrow.toDateString()) {
+    return `Tomorrow at ${formattedTime}`;
+  } else {
+    return `${date.toLocaleDateString()} at ${formattedTime}`;
+  }
+};
+
 export default function StudentDashboard() {
-  const { user, loading } = useAuth()
-  const router = useRouter()
+  const { user, loading, handleApiError } = useAuth();
+  const router = useRouter();
+
+  // New state to store fetched classes and loading status
+  const [upcomingClasses, setUpcomingClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+
+  const fetchTimetableData = useCallback(async () => {
+    const token = localStorage.getItem('token');
+    if (!user || !token) {
+      setLoadingClasses(false);
+      return;
+    }
+
+    setLoadingClasses(true);
+    try {
+      const response = await fetch(`/api/timetable/student`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          handleApiError(response);
+        }
+        throw new Error("Failed to load timetable");
+      }
+
+      const data = await response.json();
+      setUpcomingClasses(data.timetable || []);
+
+    } catch (error) {
+      console.error("Error fetching timetable:", error);
+      toast.error("Failed to load timetable.");
+    } finally {
+      setLoadingClasses(false);
+    }
+  }, [user, handleApiError]);
 
   useEffect(() => {
     if (!loading && (!user || user.role !== 'student')) {
       router.push('/login');
     }
-  }, [user, loading, router]);
+
+    if (user) {
+      fetchTimetableData();
+    }
+  }, [user, loading, router, fetchTimetableData]);
 
   const getAttendanceColor = (percentage: number) => {
     if (percentage >= 90) return "text-green-500"
@@ -53,6 +121,9 @@ export default function StudentDashboard() {
       </div>
     );
   }
+  
+  // FIX: Remove the filtering of expired classes to show all classes.
+  const classesToShow = upcomingClasses;
 
   return (
     <div className="space-y-6 pb-20 md:pb-6">
@@ -70,7 +141,6 @@ export default function StudentDashboard() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6 }}
       >
-        {/* FIX: Change the Button to a Link that navigates to the scanner page */}
         <Link href="/student/scanner">
             <Button
                 size="lg"
@@ -134,26 +204,46 @@ export default function StudentDashboard() {
             <CardDescription className="text-sm">Your schedule for today</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {mockUpcomingClasses.map((classItem) => (
-                <div
-                  key={classItem.id}
-                  className="flex items-center justify-between p-3 border border-border/50 rounded-lg"
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <h4 className="font-medium text-foreground text-sm md:text-base">{classItem.subject}</h4>
-                      <Badge variant={classItem.date === "Today" ? "default" : "secondary"} className="text-xs">
-                        {classItem.date}
-                      </Badge>
-                    </div>
-                    <p className="text-xs md:text-sm text-muted-foreground">
-                      {classItem.time} • {classItem.room} • {classItem.teacher}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            {loadingClasses ? (
+              <div className="flex justify-center items-center py-8">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {classesToShow.length > 0 ? (
+                  classesToShow.map((classItem) => {
+                    // FIX: Add a check to prevent rendering if required data is missing
+                    if (!classItem.subject || !classItem.teacher || !classItem.startTime || !classItem.endTime) {
+                      return null;
+                    }
+
+                    const status = getClassStatus(classItem.startTime, classItem.endTime);
+                    const formattedTime = formatDateTime(classItem.startTime);
+                    
+                    return (
+                      <div
+                        key={classItem.id}
+                        className="flex items-center justify-between p-3 border border-border/50 rounded-lg"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <h4 className="font-medium text-foreground text-sm md:text-base">{classItem.subject}</h4>
+                            <Badge variant={status === "Live" ? "default" : "secondary"} className="text-xs">
+                              {status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs md:text-sm text-muted-foreground">
+                            {formattedTime} • {classItem.teacher}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">No upcoming classes found.</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

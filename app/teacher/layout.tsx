@@ -79,7 +79,7 @@ export default function TeacherLayout({
                 <GraduationCap className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-foreground">AttendEase</h2>
+                <h2 className="text-lg font-semibold text-foreground">Zippin</h2>
                 <p className="text-xs text-muted-foreground">Teacher Portal</p>
               </div>
             </div>

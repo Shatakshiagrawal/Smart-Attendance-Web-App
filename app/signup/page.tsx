@@ -161,7 +161,7 @@ export default function SignupPage() {
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
               <GraduationCap className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">AttendEase</span>
+            <span className="text-xl font-bold text-foreground">Zippin</span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground mb-2">Create Account</h1>
           <p className="text-muted-foreground">Join thousands of educators and students</p>
