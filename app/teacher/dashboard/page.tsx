@@ -56,7 +56,6 @@ export default function TeacherDashboard() {
     totalStudents: number;
   } | null>(null);
 
-  // --- State for Manual Attendance and Live Polling ---
   const [presentCount, setPresentCount] = useState(0);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [allStudents, setAllStudents] = useState<Student[]>([]);
@@ -72,7 +71,6 @@ export default function TeacherDashboard() {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      // CONVERTED: Uses relative API path for the current project
       const response = await fetch(`/api/timetable`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -100,14 +98,12 @@ export default function TeacherDashboard() {
       fetchTimetable();
     }
     return () => {
-      // Cleanup all intervals on unmount
       if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
       if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
       if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
     };
   }, [user, fetchTimetable]);
 
-  // ADDED: Function to fetch live session status
   const fetchSessionStatus = useCallback(async () => {
     if (!activeQR) return;
     try {
@@ -132,37 +128,43 @@ export default function TeacherDashboard() {
     }
   }, [activeQR, handleApiError]);
 
+  // --- FIX: Separated interval management into two useEffect hooks ---
+
+  // Effect 1: Manages the QR animation and the 7-second refresh.
+  // This runs ONLY when the session starts or stops.
   useEffect(() => {
-    // Clear all intervals before setting new ones
-    if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
-    if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
-    if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
-    
-    if (activeQR && activeQR.animationSequence && activeQR.animationSequence.length > 0) {
+    if (activeQR) {
         animationIntervalRef.current = setInterval(() => {
             setCurrentFrameIndex(prev => (prev + 1) % (activeQR.animationSequence.length || 1));
-        }, 500); // Using faster animation from current project
+        }, 500);
 
-        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 7000); // Using 7-second refresh from current project
-        
-        // ADDED: Polling for live student count
-        fetchSessionStatus();
-        statusPollIntervalRef.current = setInterval(fetchSessionStatus, 5000);
+        sequenceRefreshIntervalRef.current = setInterval(refreshSequence, 7000);
     }
     
     return () => {
-      // Final cleanup
-      if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
-      if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
-      if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
+        if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
+        if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
     };
-  }, [activeQR, fetchSessionStatus]);
+  }, [activeQR?.attendanceId]); // Dependency on a stable property of the session
+
+  // Effect 2: Manages the 5-second status poll.
+  // This runs when the session starts and stops, but its timer is independent.
+  useEffect(() => {
+    if (activeQR) {
+        fetchSessionStatus(); // Initial fetch
+        statusPollIntervalRef.current = setInterval(fetchSessionStatus, 5000);
+    }
+
+    return () => {
+        if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
+    };
+  }, [activeQR?.attendanceId, fetchSessionStatus]);
+
 
   const startAttendanceSession = async (semester: Semester) => {
     const toastId = toast.loading("Starting attendance session...");
     try {
       const token = localStorage.getItem('token');
-      // CONVERTED: Uses relative API path
       const res = await fetch(`/api/attendance/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
@@ -183,7 +185,6 @@ export default function TeacherDashboard() {
         totalStudents: semester?.students?.length || 0,
       });
 
-      // ADDED: Set initial student list
       setAllStudents(semester.students || []);
       toast.success("Session started!", { id: toastId });
     } catch (error) {
@@ -195,7 +196,6 @@ export default function TeacherDashboard() {
     if (!activeQR) return;
     try {
       const token = localStorage.getItem('token');
-      // CONVERTED: Uses relative API path
       const res = await fetch(`/api/attendance/refresh-sequence`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
@@ -216,10 +216,13 @@ export default function TeacherDashboard() {
   const closeQrModal = async () => {
     if (!activeQR) return;
     
+    if (statusPollIntervalRef.current) clearInterval(statusPollIntervalRef.current);
+    if (animationIntervalRef.current) clearInterval(animationIntervalRef.current);
+    if (sequenceRefreshIntervalRef.current) clearInterval(sequenceRefreshIntervalRef.current);
+    
     const toastId = toast.loading("Closing session...");
     try {
         const token = localStorage.getItem('token');
-        // CONVERTED: Uses relative API path
         const res = await fetch(`/api/attendance/complete`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
@@ -239,7 +242,6 @@ export default function TeacherDashboard() {
     } finally {
         setActiveQR(null);
         setCurrentFrameIndex(0);
-        // ADDED: Reset manual attendance state
         setPresentCount(0);
         setAllStudents([]);
         setPresentStudentIds(new Set());
@@ -247,17 +249,18 @@ export default function TeacherDashboard() {
     }
   };
 
-  // ADDED: Function to handle checkbox changes in manual modal
   const handleManualSelectionChange = (studentId: string, checked: boolean) => {
     setManualSelections(prev => {
         const newSelections = new Set(prev);
-        if (checked) newSelections.add(studentId);
-        else newSelections.delete(studentId);
+        if (checked) {
+            newSelections.add(studentId);
+        } else {
+            newSelections.delete(studentId);
+        }
         return newSelections;
     });
   };
 
-  // ADDED: Function to save manually selected students
   const handleSaveManualAttendance = async () => {
     if (!activeQR || manualSelections.size === 0) {
         setIsManualModalOpen(false);
@@ -266,7 +269,6 @@ export default function TeacherDashboard() {
     const toastId = toast.loading("Saving manual attendance...");
     try {
         const token = localStorage.getItem('token');
-        // CONVERTED: Uses relative API path
         const res = await fetch('/api/attendance/manual-mark', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
@@ -347,7 +349,6 @@ export default function TeacherDashboard() {
                   <CardTitle>Live Attendance - {activeQR.subject}</CardTitle>
                   <Button variant="ghost" size="sm" onClick={closeQrModal}><X className="w-4 h-4" /></Button>
                 </div>
-                {/* ADDED: Live student count and expiry time */}
                 <div className="flex items-center justify-between text-sm text-muted-foreground">
                     <span>Expires at {new Date(activeQR.expiresAt).toLocaleTimeString()}</span>
                     <Badge variant="secondary" className="text-base">
@@ -361,7 +362,6 @@ export default function TeacherDashboard() {
                     data={getQrDataForCurrentFrame()}
                     size={280}
                 />
-                {/* ADDED: Manual Attendance button */}
                 <Button variant="outline" onClick={() => setIsManualModalOpen(true)}>
                     <Edit className="w-4 h-4 mr-2" />
                     Manual Attendance
@@ -372,7 +372,6 @@ export default function TeacherDashboard() {
         )}
       </AnimatePresence>
 
-      {/* ADDED: Manual Attendance Dialog */}
       <Dialog open={isManualModalOpen} onOpenChange={setIsManualModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
