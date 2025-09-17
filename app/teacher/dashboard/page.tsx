@@ -306,11 +306,16 @@ export default function TeacherDashboard() {
     return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
   };
     
-  const getClassStatus = (startTime: string, endTime: string) => {
+const getClassStatus = (startTime: string, endTime: string) => {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const startDate = new Date(`${todayStr}T${startTime}`);
-    const endDate = new Date(`${todayStr}T${endTime}`);
+    const todayYear = now.getFullYear();
+    const todayMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const todayDay = String(now.getDate()).padStart(2, '0');
+    
+    const todayDateStr = ⁠ ${todayYear}-${todayMonth}-${todayDay} ⁠;
+
+    const startDate = new Date(⁠ ${todayDateStr}T${startTime}:00 ⁠);
+    const endDate = new Date(⁠ ${todayDateStr}T${endTime}:00 ⁠);
 
     if (now >= startDate && now <= endDate) return 'live';
     if (now > endDate) return 'completed';
