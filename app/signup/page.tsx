@@ -291,6 +291,7 @@ export default function SignupPage() {
                         <SelectValue placeholder="Select your course/program" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="btech-cse">B.Tech Mechatronics Engineering</SelectItem>
                         <SelectItem value="btech-cse">B.Tech Computer Science Engineering</SelectItem>
                         <SelectItem value="btech-it">B.Tech Information Technology</SelectItem>
                         <SelectItem value="btech-ece">B.Tech Electronics & Communication</SelectItem>
