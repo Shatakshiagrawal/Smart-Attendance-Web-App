@@ -311,11 +311,11 @@ const getClassStatus = (startTime: string, endTime: string) => {
     const todayYear = now.getFullYear();
     const todayMonth = String(now.getMonth() + 1).padStart(2, '0');
     const todayDay = String(now.getDate()).padStart(2, '0');
-    
-    const todayDateStr = ⁠ ${todayYear}-${todayMonth}-${todayDay} ⁠;
 
-    const startDate = new Date(⁠ ${todayDateStr}T${startTime}:00 ⁠);
-    const endDate = new Date(⁠ ${todayDateStr}T${endTime}:00 ⁠);
+    const todayDateStr = `${todayYear}-${todayMonth}-${todayDay}`;
+
+    const startDate = new Date(`${todayDateStr}T${startTime}:00`);
+    const endDate = new Date(`${todayDateStr}T${endTime}:00`);
 
     if (now >= startDate && now <= endDate) return 'live';
     if (now > endDate) return 'completed';
