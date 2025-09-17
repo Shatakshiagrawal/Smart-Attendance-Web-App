@@ -60,7 +60,6 @@ export default function TeacherLayout({
     return null
   }
 
-  // FIX: Safely get user initials
   const getInitials = (name: string) => {
     const names = name.split(' ');
     if (names.length > 1) {
