@@ -6,11 +6,13 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { CheckCircle, XCircle, Loader2, CameraOff } from "lucide-react"
+import { CheckCircle, XCircle, Loader2, CameraOff, ZoomIn } from "lucide-react"
 import { Html5Qrcode } from "html5-qrcode"
 import toast, { Toaster } from "react-hot-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/components/AuthProvider.jsx"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 export default function QRScannerPage() {
   const router = useRouter();
@@ -22,6 +24,11 @@ export default function QRScannerPage() {
   const [progress, setProgress] = useState(0);
   const [chunksCollectedCount, setChunksCollectedCount] = useState(0);
   const [totalChunksCount, setTotalChunksCount] = useState(0);
+
+  // --- ADDED: State for zoom functionality ---
+  const [zoom, setZoom] = useState(1);
+  const [zoomCapabilities, setZoomCapabilities] = useState<{ min: number; max: number; step: number } | null>(null);
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
   
   // Refs for stable data access within the scanner callback
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -61,11 +68,29 @@ export default function QRScannerPage() {
     }
   };
   
+  // --- ADDED: Handler for zoom slider changes ---
+  const handleZoomChange = (newZoomValue: number) => {
+    if (cameraTrackRef.current && zoomCapabilities) {
+        try {
+            cameraTrackRef.current.applyConstraints({
+                advanced: [{ zoom: newZoomValue }]
+            });
+            setZoom(newZoomValue);
+        } catch(e) {
+            console.error("Failed to apply zoom constraints", e)
+        }
+    }
+  }
+
   useEffect(() => {
-    // Ensure this runs only once
     if (scannerRef.current) return;
 
-    const html5QrCode = new Html5Qrcode("reader");
+    const html5QrCode = new Html5Qrcode("reader", { 
+        verbose: false,
+        experimentalFeatures: {
+            useBarCodeDetectorIfSupported: true,
+        }
+    });
     scannerRef.current = html5QrCode;
 
     const onScanSuccess = (decodedText: string) => {
@@ -75,13 +100,9 @@ export default function QRScannerPage() {
 
         const chunkIndex = parseInt(indexStr, 10);
         const totalChunksNeeded = parseInt(totalStr, 10);
-
-        // --- THE CRITICAL FIX ---
-        // Use refs to access the latest state within the callback
         const currentSessionId = currentSessionIdRef.current;
         const collectedChunks = collectedChunksRef.current;
 
-        // If the session ID changes, reset everything
         if (currentSessionId && id !== currentSessionId) {
           toast.error("QR Code changed. Restarting scan...");
           collectedChunks.clear();
@@ -90,19 +111,16 @@ export default function QRScannerPage() {
           setTotalChunksCount(totalChunksNeeded);
         }
 
-        // Lock onto the first session ID scanned
         if (!currentSessionId) {
           currentSessionIdRef.current = id;
           setTotalChunksCount(totalChunksNeeded);
         }
 
-        // Collect new chunks only for the current session
         if (id === currentSessionIdRef.current && !collectedChunks.has(chunkIndex)) {
             collectedChunks.set(chunkIndex, data);
             setChunksCollectedCount(collectedChunks.size);
             setProgress((collectedChunks.size / totalChunksNeeded) * 100);
 
-            // If all chunks are collected, stop the scanner and verify
             if (collectedChunks.size === totalChunksNeeded) {
                 if (html5QrCode && html5QrCode.isScanning) {
                     html5QrCode.stop().then(() => {
@@ -121,10 +139,27 @@ export default function QRScannerPage() {
             if (devices && devices.length) {
                 html5QrCode.start(
                     { facingMode: "environment" }, 
-                    { fps: 10, qrbox: { width: 250, height: 350 } },
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
                     onScanSuccess,
                     (errorMessage) => {}
-                ).catch(err => {
+                ).then(() => {
+                    // --- ADDED: Get camera track and capabilities after scanner starts ---
+                    const videoElement = document.getElementById('reader')?.querySelector('video');
+                    if (videoElement && videoElement.srcObject instanceof MediaStream) {
+                        const track = videoElement.srcObject.getVideoTracks()[0];
+                        cameraTrackRef.current = track;
+                        const capabilities = track.getCapabilities();
+                        
+                        if ('zoom' in capabilities) {
+                            setZoomCapabilities({
+                                min: capabilities.zoom!.min,
+                                max: capabilities.zoom!.max,
+                                step: capabilities.zoom!.step,
+                            });
+                            setZoom(capabilities.zoom!.min); // Start at minimum zoom
+                        }
+                    }
+                }).catch(err => {
                     setError("Failed to start scanner. Please grant camera permissions.");
                     setScanStatus("error");
                 });
@@ -142,7 +177,7 @@ export default function QRScannerPage() {
         scannerRef.current.stop().catch(console.error);
       }
     };
-  }, []); // Empty dependency array ensures this runs only once
+  }, []);
 
   const renderContent = () => {
     switch (scanStatus) {
@@ -182,6 +217,31 @@ export default function QRScannerPage() {
         <Card className="border-border/50">
             <CardContent className="p-4 sm:p-6">
                 <div id="reader" className="w-full max-w-md mx-auto bg-black rounded-lg overflow-hidden"></div>
+                
+                {/* --- ADDED: Zoom Slider UI --- */}
+                {zoomCapabilities && (
+                    <div className="max-w-md mx-auto mt-4 space-y-2">
+                        <Label htmlFor="zoom-slider" className="flex items-center gap-2 text-muted-foreground">
+                            <ZoomIn className="w-4 h-4" />
+                            Camera Zoom
+                        </Label>
+                        <div className="flex items-center gap-4">
+                            <span className="text-xs text-muted-foreground">1x</span>
+                            <Input 
+                                id="zoom-slider"
+                                type="range"
+                                min={zoomCapabilities.min}
+                                max={zoomCapabilities.max}
+                                step={zoomCapabilities.step}
+                                value={zoom}
+                                onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+                                className="w-full cursor-pointer"
+                            />
+                            <span className="text-xs text-muted-foreground">Max</span>
+                        </div>
+                    </div>
+                )}
+
                 <div className="min-h-[120px] flex items-center justify-center p-4 max-w-md mx-auto">
                     {renderContent()}
                 </div>
