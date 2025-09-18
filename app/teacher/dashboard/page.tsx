@@ -374,10 +374,10 @@ const getClassStatus = (startTime: string, endTime: string) => {
                     data={getQrDataForCurrentFrame()}
                     size={280}
                 />
-                {/* <Button variant="outline" onClick={() => setIsManualModalOpen(true)}>
+                <Button variant="outline" onClick={() => setIsManualModalOpen(true)}>
                     <Edit className="w-4 h-4 mr-2" />
                     Manual Attendance
-                </Button> */}
+                </Button>
               </CardContent>
             </Card>
           </motion.div>
