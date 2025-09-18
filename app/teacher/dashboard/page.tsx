@@ -387,7 +387,7 @@ const getClassStatus = (startTime: string, endTime: string) => {
       <Dialog open={isManualModalOpen} onOpenChange={setIsManualModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
-                <DialogTitle>Manual Attendance</DialogTitle>
+                <DialogTitle>Attendance List</DialogTitle>
                 <DialogDescription>Select students who are present but unable to scan.</DialogDescription>
             </DialogHeader>
             <div className="max-h-[60vh] overflow-y-auto p-4 space-y-4">
