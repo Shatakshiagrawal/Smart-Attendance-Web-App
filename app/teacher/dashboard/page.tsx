@@ -376,7 +376,7 @@ const getClassStatus = (startTime: string, endTime: string) => {
                 />
                 <Button variant="outline" onClick={() => setIsManualModalOpen(true)}>
                     <Edit className="w-4 h-4 mr-2" />
-                    Manual Attendance
+                   Attendance List
                 </Button>
               </CardContent>
             </Card>
